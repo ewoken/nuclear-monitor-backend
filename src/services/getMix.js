@@ -28,30 +28,34 @@ const TODAY_TTL = 15 * 60 * 1000; // 15 min;
 async function getOldMix(inputDate) {
   const date = moment(inputDate).startOf('day');
 
-  // fetch all values of day and first one of next day
+  const interval = [
+    date.format('YYYY-MM-DD'),
+    moment(date)
+      .add(1, 'day')
+      .format('YYYY-MM-DD'),
+  ];
+
+  // fetch all values of previous day and asked day
   const url = `${API_URL}?${qs.stringify({
     dataset: 'eco2mix-national-cons-def',
     rows: 97, // add first quarter of next day
     sort: '-date_heure',
-    'refine.date_heure': [
-      date.format('YYYY-MM-DD'),
-      moment(date)
-        .add(1, 'day')
-        .format('YYYY-MM-DD'),
-    ],
+    // 'refine.date': date.format('YYYY-MM-DD'),
+    q: `date_heure >= ${interval[0]} AND date_heure <= ${interval[1]}`,
     timezone: 'Europe/Paris',
-    'disjunctive.date_heure': true,
   })}`;
 
   const response = await fetch(url);
   const data = await response.json();
   const mix = data.records.map(({ fields }) => ({
     wind: Number(fields.eolien),
-    solar: Number(fields.solaire),
+    solar: Math.max(Number(fields.solaire), 0),
+    nuclear: Number(fields.nucleaire),
+    gas: Number(fields.gaz),
     oil: Number(fields.fioul),
     coal: Number(fields.charbon),
     consumption: Number(fields.consommation),
-    biomass: Number(fields.bioenergies),
+    bioenergy: Number(fields.bioenergies),
     hydroPumped: Number(fields.pompage),
     hydro: Number(fields.hydraulique),
     imports: Math.max(0, Number(fields.ech_physiques)),
@@ -66,7 +70,7 @@ async function getOldMix(inputDate) {
       mix[i][key] = Math.floor((mix[i - 1][key] + mix[i + 1][key]) / 2);
     });
   }
-  mix.pop(); // remove first quarter of next day;
+  // mix.pop(); // remove first quarter of next day;
 
   return mix.map((v, i) => ({
     start_date: moment(date)
@@ -79,14 +83,14 @@ async function getOldMix(inputDate) {
   }));
 }
 
-async function getNewMix({ date, rteToken }) {
+async function getNewMix({ date, rteToken, isToday }) {
   const dateData = {
     start_date: moment(date)
       .startOf('day')
       .format(),
     end_date: moment(date)
       .startOf('day')
-      .add(1, 'day')
+      .add(isToday ? 1 : 2, 'day')
       .format(),
   };
 
@@ -109,14 +113,14 @@ async function getNewMix({ date, rteToken }) {
   const valuesByTypeArray = data.generation_mix_15min_time_scale
     .filter(d => d.production_subtype === 'TOTAL')
     .map(d =>
-      d.values.map(i => ({
+      d.values.slice(0, 97).map(i => ({
         startDate: i.start_date,
         endDate: i.end_date,
         [TYPE_MAPPING[d.production_type]]: i.value,
       })),
     );
 
-  const consumptionValues = data2.short_term[0].values.map(d => ({
+  const consumptionValues = data2.short_term[0].values.slice(0, 97).map(d => ({
     startDate: d.start_date,
     endDate: d.end_date,
     consumption: d.value,
@@ -162,11 +166,18 @@ async function getMix(input, { rteToken, logger, cache }) {
     return cacheRes;
   }
 
-  const mix = await (isOld ? getOldMix(date) : getNewMix({ date, rteToken }));
+  const mix = await (isOld
+    ? getOldMix(date)
+    : getNewMix({ date, rteToken, isToday }));
 
-  cache.setValue(key, mix, ttl);
+  const res = {
+    date: date.format('YYYY-MM-DD'),
+    mix,
+  };
 
-  return mix;
+  cache.setValue(key, res, ttl);
+
+  return res;
 }
 
 module.exports = getMix;

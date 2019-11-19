@@ -10,6 +10,7 @@ const { DateInput } = require('./types');
 async function getProductions(input, { rteToken, logger, cache }) {
   const dateInput = assertInput(DateInput, input);
   const date = moment(dateInput.date).tz('Europe/Paris');
+  const isToday = date.isSame(moment().tz('Europe/Paris'), 'day');
 
   const key = `PROD-${date.format('YYYY-MM-DD-HH')}`;
   const cacheRes = cache.getValue(key);
@@ -27,7 +28,7 @@ async function getProductions(input, { rteToken, logger, cache }) {
         .format(),
       end_date: moment(date)
         .startOf('day')
-        .add(1, 'day')
+        .add(isToday ? 1 : 2, 'day')
         .format(),
     },
     token: rteToken,
@@ -37,7 +38,7 @@ async function getProductions(input, { rteToken, logger, cache }) {
     .filter(d => d.unit.production_type === 'NUCLEAR')
     .map(reactor => ({
       eicCode: reactor.unit.eic_code,
-      values: reactor.values.map(value => ({
+      values: reactor.values.slice(0, 25).map(value => ({
         startDate: value.start_date,
         endDate: value.end_date,
         updatedDate: value.updated_date,
@@ -45,9 +46,14 @@ async function getProductions(input, { rteToken, logger, cache }) {
       })),
     }));
 
-  cache.setValue(key, productions, 3600 * 1000);
+  const res = {
+    date: date.format('YYYY-MM-DD'),
+    productions,
+  };
 
-  return productions;
+  cache.setValue(key, res, 3600 * 1000);
+
+  return res;
 }
 
 async function getUnavailabilities(input, { rteToken }) {
