@@ -1,5 +1,14 @@
 {
   "api": {
     "cors": "*"
-  }
+  },
+  "server": {
+    "host": "http://localhost",
+    "port": "8080"
+  },
+  "mongoDb": {
+    "uri": "mongodb://localhost",
+    "dbName": "devel"
+  },
+  "RTE_API_KEY": "RTE_API_KEY"
 }
