@@ -29,9 +29,14 @@ async function updateUnavailabies(environment) {
     {},
     { sort: { updatedAt: -1 }, limit: 1 },
   );
-  const lastDate = moment(lastUpdatedUnavailability.updatedAt).tz(
-    'Europe/Paris',
-  );
+
+  // set lastUpdatedUnavailability to 24 hours ago if not defined
+  const lastUpdatedUnavailabilityDate =
+    lastUpdatedUnavailability === null
+      ? moment(moment()).subtract(1, 'days')
+      : lastUpdatedUnavailability.updatedAt;
+
+  const lastDate = moment(lastUpdatedUnavailabilityDate).tz('Europe/Paris');
   // const lastDate = moment('2019-12-01').tz('Europe/Paris');
 
   const data = await getRessource({
@@ -50,11 +55,9 @@ async function updateUnavailabies(environment) {
     },
     token: rteToken,
   });
-
   const newUpdates = unavailabilitiesFormatter(data).filter(d =>
     moment(d.updatedAt).isAfter(lastDate),
   );
-
   if (newUpdates.length > 0) {
     const currentUnavailabilities = await unavailabilities
       .find({
